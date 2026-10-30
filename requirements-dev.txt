@@ -1,6 +1,6 @@
 # Dev dependencies for debugging, lint, formatting.
 debugpy==1.8.22
-ruff==0.17.0
+ruff==0.17.3
 pylint-odoo==10.0.12
 pre-commit==4.7.0
 pytest-odoo==2.3.0
