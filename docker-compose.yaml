@@ -1,0 +1,45 @@
+# Odoo 20.0 Community development environment.
+# Used by the dev container (.devcontainer/devcontainer.json), which publishes no port:
+# VS Code forwards Odoo and Mailpit (forwardPorts), on another local port when one is
+# taken, so several projects run side by side. PostgreSQL stays internal (db:5432).
+# Can also run on its own (`docker compose up -d`): add `ports:` to a service to reach
+# it from the host.
+services:
+  odoo:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: dev
+    image: ${COMPOSE_PROJECT_NAME:-odoo}-dev:20.0
+    # The developer starts Odoo (F5 / VS Code tasks), not the container
+    command: sleep infinity
+    volumes:
+      - .:/workspace:cached
+      - odoo-data:/var/lib/odoo
+    depends_on:
+      db:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+
+  db:
+    image: postgres:${POSTGRES_VERSION:-18}
+    environment:
+      POSTGRES_USER: odoo
+      POSTGRES_PASSWORD: odoo
+      POSTGRES_DB: postgres
+    volumes:
+      # postgres:18+ keeps its data in /var/lib/postgresql/<major>/docker
+      - pg-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U odoo"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mailpit:
+    image: axllent/mailpit:v1.31
+
+volumes:
+  odoo-data:
+  pg-data:

@@ -1,0 +1,23 @@
+# Python deps are installed in /opt/venv.
+# Official odoo, OCA packages, python dependencies
+
+# Dev Containers > Rebuild Container after each modification
+
+# ------------ External dependencies ------------
+# E.g.: phonenumbers==8.13.55
+
+# ------------ Deployment ------------
+# click-odoo-update: on deploy, updates only the addons whose checksum changed
+click-odoo-contrib==1.24
+
+# ------------ OCA modules ------------
+# OCA modules are in odoo.addons namespace and automatically found.
+#
+# PyPI published (usual case):
+#   odoo-addon-web_environment_ribbon==20.0.1.0.0.3
+#
+# Not published case: NEVER USE THIS UNLESS NECESSARY
+# Get the module from a specific commit sha (never a branch).
+# Its OCA dependencies not published on PyPI must be listed here too.
+#
+#   odoo-addon-web_environment_ribbon @ git+https://github.com/OCA/web@<commit_sha>#subdirectory=web_environment_ribbon

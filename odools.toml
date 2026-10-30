@@ -1,0 +1,8 @@
+# Official OdooLS (see: Odoo.odoo extension doc).
+# Paths are those of the dev container
+# /opt/venv/odoo-addons : OCA modules installed with pip (see: requirements.txt)
+[[config]]
+name = "Odoo 20"
+odoo_path = "/usr/lib/python3/dist-packages"
+addons_paths = ["addons", "vendor", "/opt/venv/odoo-addons"]
+python_path = "/opt/venv/bin/python"

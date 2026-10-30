@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.coverage
+coverage.xml
+htmlcov/
+.pytest_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+
+# Environnement local
+.env
+*.log
+*.session.sql
+
+# Editors / OS
+.idea/
+.DS_Store
+*.swp
+
+# IA
+.claude/
+
+# Links to the code of Odoo and of the OCA modules, created by the dev container
+.odoo-src/
+
+# Local clones of OCA repositories installed as editable (pip install -e), see README
+third-party/

@@ -1,0 +1,73 @@
+{
+  // Odoo debug configurations (debugpy). Odoo runs threaded (workers = 0), which
+  // breakpoints need to be reliable.
+  // No `--dev=reload` here: restarting the process detaches the debugger.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Odoo: server",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "/opt/venv/bin/odoo",
+      "args": ["-d", "${input:database}", "--dev=xml,qweb"],
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "Odoo: update a module",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "/opt/venv/bin/odoo",
+      "args": ["-d", "${input:database}", "-u", "${input:module}", "--dev=xml,qweb"],
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "Odoo: test a module",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "/opt/venv/bin/odoo",
+      "args": [
+        "-d",
+        "${input:testDatabase}",
+        "-i",
+        "${input:module}",
+        "--test-tags",
+        "/${input:module}",
+        "--stop-after-init",
+        "--http-port",
+        "8169"
+      ],
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "Odoo: shell",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "/opt/venv/bin/odoo",
+      "args": ["shell", "-d", "${input:database}"],
+      "console": "integratedTerminal",
+      "justMyCode": false
+    }
+  ],
+  "inputs": [
+    {
+      "id": "database",
+      "type": "promptString",
+      "description": "Database",
+      "default": "odoo20"
+    },
+    {
+      "id": "testDatabase",
+      "type": "promptString",
+      "description": "Test database",
+      "default": "odoo20_test"
+    },
+    {
+      "id": "module",
+      "type": "promptString",
+      "description": "Technical module name (e.g. sale_custom)"
+    }
+  ]
+}

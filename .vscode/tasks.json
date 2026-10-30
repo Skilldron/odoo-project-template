@@ -1,0 +1,51 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Odoo: run (auto-reload, no debugger)",
+      "type": "shell",
+      "command": "odoo -d ${input:database} --dev=all",
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "Odoo: test a module",
+      "type": "shell",
+      "command": "odoo -d ${input:testDatabase} -i ${input:module} --test-tags /${input:module} --stop-after-init --http-port 8169",
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Odoo: drop a database",
+      "type": "shell",
+      "command": "dropdb --if-exists -h db -U odoo ${input:database}",
+      "options": {"env": {"PGPASSWORD": "odoo"}},
+      "problemMatcher": []
+    },
+    {
+      "label": "Quality: pre-commit on the whole repository",
+      "type": "shell",
+      "command": "pre-commit run --all-files",
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "database",
+      "type": "promptString",
+      "description": "Database",
+      "default": "odoo20"
+    },
+    {
+      "id": "testDatabase",
+      "type": "promptString",
+      "description": "Test database",
+      "default": "odoo20_test"
+    },
+    {
+      "id": "module",
+      "type": "promptString",
+      "description": "Technical module name (e.g. sale_custom)"
+    }
+  ]
+}
