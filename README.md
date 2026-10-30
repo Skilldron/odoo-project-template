@@ -6,6 +6,12 @@ builds, tests and publishes a hardened production image.
 
 One branch per Odoo version (`20.0`, `19.0`, …), same layout.
 
+> **Branch `20.0-K8S-CD`**: `20.0` plus continuous deployment to Kubernetes (review
+> apps, staging, preproduction, production). It relies on the
+> [Odoo Helm chart](https://github.com/Skilldron/odoo-helm-chart), whose version is
+> pinned in `deploy/chart.env`; see [docs/deployment.md](docs/deployment.md). Changes
+> common to every deployment method go to `20.0` first, then are merged here.
+
 ## Getting started
 
 Requirements: Docker, VS Code and the _Dev Containers_ extension.
@@ -64,7 +70,8 @@ addons/          project addons (dev_sample is a sample module, delete it)
 vendor/          purchased modules (Odoo Apps Store), unmodified
 ci/              CI scripts, runnable locally
 docker/          multi-stage Dockerfile, dev configuration, production configuration
-docs/            CI and production image, branching model
+deploy/          chart version (chart.env), values per environment, CI access example
+docs/            CI and production image, deployment, branching model
 .odoo-src/       links to the code of Odoo and of the OCA modules (dev container, ignored)
 requirements.txt        Python dependencies of the addons, OCA modules
 requirements-dev.txt    developer tooling (dev image only)
@@ -81,11 +88,16 @@ candidates and versions to the release package. The only promotion turns the las
 `X.Y.Z-rc.N`, once validated, into `X.Y.Z` (same image) when `vX.Y.Z` is tagged. Each
 environment configures the image with environment variables.
 
-Deployment is not part of this branch: see the `20.0-K8S-CD` branch (continuous
-deployment to Kubernetes with a Helm chart), or deploy the image yourself.
+This branch, `20.0-K8S-CD`, then deploys the image to Kubernetes with the
+[Odoo Helm chart](https://github.com/Skilldron/odoo-helm-chart), pinned in
+`deploy/chart.env`: a review app for each pull request, staging for each release
+candidate, a preproduction mirror and the production. Deployments are enabled per
+environment by the repository variable `DEPLOY_ENVIRONMENTS`; see
+[docs/deployment.md](docs/deployment.md).
 
-- [docs/ci.md](docs/ci.md): pipeline, image tags, configuration variables, deployment
-  example.
+- [docs/ci.md](docs/ci.md): pipeline, image tags, configuration variables.
+- [docs/deployment.md](docs/deployment.md): environments, setup and operations of the
+  Kubernetes deployment.
 - [docs/gitflow.md](docs/gitflow.md): recommended Git Flow for projects, release cycle,
   branch protection.
 

@@ -1,40 +1,42 @@
 # CI and production image
 
 The CI (GitHub Actions, GitHub-hosted runners) checks the code, builds the **production
-image**, tests it and publishes it to GHCR. It stops there: **deployment is up to you**
-in this branch. Deployment tooling (Docker, Kubernetes) lives in other branches of the
-template repository: `20.0-K8S-CD` (Kubernetes, Helm chart), `20.0-docker-deployment`
-(planned). Branching model: [gitflow.md](gitflow.md).
+image**, tests it and publishes it to GHCR. In this branch, it then **deploys** it to
+Kubernetes with the [Odoo Helm chart](https://github.com/Skilldron/odoo-helm-chart)
+([deployment.md](deployment.md)). Branching model: [gitflow.md](gitflow.md).
 
 ## Pipeline
 
-Three groups of jobs (reusable workflows called by `.github/workflows/ci.yml`):
+Four groups of jobs (reusable workflows called by `.github/workflows/ci.yml`):
 
 ```
-Quality    quality.yml   lint (pre-commit)
-Image      image.yml     plan ─► base ─► build ─┬─► tests ─┐
-                                                └─► smoke ─┴─► publish
-                         (pull request from a fork: a single "local" job, nothing published)
-Promotion  promote.yml   tag vX.Y.Z: last X.Y.Z-rc.N ─► X.Y.Z
+Quality     quality.yml   lint (pre-commit), chart (ci/values-lint.sh)
+Image       image.yml     plan ─► base ─► build ─┬─► tests ─┐
+                                                 └─► smoke ─┴─► publish
+                          (pull request from a fork: a single "local" job, nothing published)
+Promotion   promote.yml   tag vX.Y.Z: last X.Y.Z-rc.N ─► X.Y.Z
+Deployment  deploy.yml    deploy ─► restore (when deploy fails, persistent environments)
+                          called by the review, staging, preprod and production jobs
 ```
 
-| Job       | Role                                                                                          |
-| --------- | --------------------------------------------------------------------------------------------- |
-| `plan`    | Tags to publish for the event; refuses a `release/` or `hotfix/` branch that is not `X.Y.Z`   |
-| `base`    | Publishes `base:<key>` when it does not exist yet (about once a week)                         |
-| `build`   | Builds only the modules on top of `base:<key>`, pushes `builds:run-<id>` (+ `-test`)          |
-| `tests`   | Tests of the `addons/` modules + coverage, on the image pulled from the registry              |
-| `smoke`   | Production image, read-only, no capabilities: `/web/health`, `/web/login`, non-root uid       |
-| `publish` | After the tests **and** the smoke test: adds the readable tags (same digest); output `digest` |
-| `promote` | On a git tag: promotes the last release candidate; output `digest`                            |
+| Job       | Role                                                                                                        |
+| --------- | ----------------------------------------------------------------------------------------------------------- |
+| `plan`    | Tags to publish for the event; refuses a `release/` or `hotfix/` branch that is not `X.Y.Z`                 |
+| `base`    | Publishes `base:<key>` when it does not exist yet (about once a week)                                       |
+| `build`   | Builds only the modules on top of `base:<key>`, pushes `builds:run-<id>` (+ `-test`)                        |
+| `tests`   | Tests of the `addons/` modules + coverage, on the image pulled from the registry                            |
+| `smoke`   | Production image, read-only, no capabilities: `/web/health`, `/web/login`, non-root uid                     |
+| `publish` | After the tests **and** the smoke test: adds the readable tags (same digest); output `digest`               |
+| `promote` | On a git tag: promotes the last release candidate; output `digest`                                          |
+| `chart`   | Deployment values against the pinned chart, no cluster (`ci/values-lint.sh`, pinned Helm 4 and kubeconform) |
 
 Other workflows:
 
-| Workflow                                | Trigger                            | Role                                         |
-| --------------------------------------- | ---------------------------------- | -------------------------------------------- |
-| `.github/workflows/cleanup.yml`         | pull request closed, daily, manual | Cleans up the `builds` and `base` packages   |
-| `.github/workflows/odoo-image-bump.yml` | Monday 5:00, manual                | Pull request when the official image changes |
-| `.github/dependabot.yml`                | weekly                             | Update pull requests (actions, pip, npm)     |
+| Workflow                                | Trigger                            | Role                                                    |
+| --------------------------------------- | ---------------------------------- | ------------------------------------------------------- |
+| `.github/workflows/cleanup.yml`         | pull request closed, daily, manual | Cleans up the `builds` and `base` packages, review apps |
+| `.github/workflows/odoo-image-bump.yml` | Monday 5:00, manual                | Pull request when the official image changes            |
+| `.github/dependabot.yml`                | weekly                             | Update pull requests (actions, pip, npm)                |
 
 ## Base image: only the modules are rebuilt
 
@@ -91,13 +93,39 @@ On a `vX.Y.Z` tag, `ci/image-promote.sh`:
 Every tag copy (`builds` → release, rc → version) keeps the original digest
 (`imagetools create --prefer-index=false`).
 
+## Deployment (`deploy.yml`)
+
+Deployments are **enabled** by the repository variable `DEPLOY_ENVIRONMENTS`, which
+lists the environments to deploy (`review staging preprod production`, or some of them).
+Without it, no deployment job runs: the template repository and a project without a
+cluster stay green.
+
+| Job (check)           | Trigger                                                     | Image                              |
+| --------------------- | ----------------------------------------------------------- | ---------------------------------- |
+| `review / deploy`     | internal pull request, not a draft, after `image`           | `builds@<digest>` of the PR        |
+| `staging / deploy`    | push `release/**`, after `image`                            | `X.Y.Z-rc.N` by its digest         |
+| `preprod / deploy`    | push `hotfix/**` after `image`; tag `v*` after `production` | the rc, then the production digest |
+| `production / deploy` | tag `v*`, after `promote`                                   | same digest as the rc              |
+| `<env> / restore`     | persistent environments, only when `deploy` failed          | —                                  |
+
+Each job runs in the GitHub environment of the same name, whose secret `KUBECONFIG`
+gives a ServiceAccount limited to one namespace. One deployment runs at a time per
+environment (per pull request for review apps). The setup, the steps of a deployment and
+the operations are in [deployment.md](deployment.md).
+
 ## Cleanup (`cleanup.yml`)
 
-- When a pull request closes, the version tagged `builds:pr-<n>` is deleted.
+- When a pull request closes, the version tagged `builds:pr-<n>` is deleted, and its
+  review app (`ci/review-remove.sh`, after a running deployment of the same pull
+  request) with its GitHub deployments (`ci/review-deployments.sh`).
 - Every night: in `builds`, untagged versions and everything beyond the 30 most recent
   are deleted, except `develop`, `main`, `20.0`, the deployment branches
   `20.0-<deployment>` and the `pr-<n>` previews (deleted when their pull request
   closes); in `base`, the last 5 are kept.
+- Every night, the review apps left over from closed pull requests are removed, with
+  their deployments (`ci/review-sweep.sh`).
+- The jobs that remove review apps read the secret of the environment `review` without
+  being recorded as deployments (`deployment: false`).
 - The release package is **never** cleaned up automatically.
 
 Images are published without attestations (`--provenance=false`): each image is a single
@@ -113,18 +141,26 @@ low.
 
 Each job is a thin layer over these scripts, which run the same way locally:
 
-| Script                          | Role                                                                           |
-| ------------------------------- | ------------------------------------------------------------------------------ |
-| `ci/base-key.sh`                | Key of the base image                                                          |
-| `ci/base-ensure.sh`             | Publishes `base:<key>` when missing                                            |
-| `ci/image-build.sh`             | `prod` and `test` images on the base (`PUSH=true`); `BASE=local`: build it all |
-| `ci/run-tests.sh <image>`       | Tests + coverage; fails on a failing test or an ERROR/CRITICAL line            |
-| `ci/smoke.sh <image>`           | Hardened smoke test                                                            |
-| `ci/image-tag.sh SRC DEST…`     | Adds tags (same digest), possibly in another package                           |
-| `ci/image-promote.sh X.Y.Z`     | Last rc → `X.Y.Z`, with the content check                                      |
-| `ci/registry-tags.py IMAGE`     | Lists the tags of an image repository (OCI API)                                |
-| `ci/ghcr-prune.sh PACKAGE RULE` | Cleans up a GHCR package (`tag:<tag>` or `keep:<n>[:<regex>]`)                 |
-| `ci/odoo-image-latest.sh`       | New digest of the official Odoo image, if any                                  |
+| Script                           | Role                                                                           |
+| -------------------------------- | ------------------------------------------------------------------------------ |
+| `ci/base-key.sh`                 | Key of the base image                                                          |
+| `ci/base-ensure.sh`              | Publishes `base:<key>` when missing                                            |
+| `ci/image-build.sh`              | `prod` and `test` images on the base (`PUSH=true`); `BASE=local`: build it all |
+| `ci/run-tests.sh <image>`        | Tests + coverage; fails on a failing test or an ERROR/CRITICAL line            |
+| `ci/smoke.sh <image>`            | Hardened smoke test                                                            |
+| `ci/image-tag.sh SRC DEST…`      | Adds tags (same digest), possibly in another package                           |
+| `ci/image-promote.sh X.Y.Z`      | Last rc → `X.Y.Z`, with the content check                                      |
+| `ci/registry-tags.py IMAGE`      | Lists the tags of an image repository (OCI API)                                |
+| `ci/ghcr-prune.sh PACKAGE RULE`  | Cleans up a GHCR package (`tag:<tag>` or `keep:<n>[:<regex>]`)                 |
+| `ci/odoo-image-latest.sh`        | New digest of the official Odoo image, if any                                  |
+| `ci/values-lint.sh`              | Deployment values against the pinned chart, modules against `addons/`          |
+| `ci/chart-e2e.sh`                | Deployment scenarios on kind (local, not in CI)                                |
+| `ci/deploy.sh`                   | Deploys an image to an environment                                             |
+| `ci/deploy-restore.sh`           | Restores after a failed update                                                 |
+| `ci/review-remove.sh`            | Removes the review app of a pull request                                       |
+| `ci/review-sweep.sh`             | Removes the review apps of closed pull requests                                |
+| `ci/review-deployments.sh N`     | Deletes the GitHub deployments of a removed review app                         |
+| `ci/deployments-inactive.sh ENV` | Marks the earlier GitHub deployments of an environment inactive                |
 
 ```sh
 # Locally, with a throwaway registry:
@@ -243,10 +279,8 @@ the packages are private.
   `ARG ODOO_IMAGE` (dated tag + digest); the CI of that pull request publishes the new
   `base:<key>`. Pull requests created with `GITHUB_TOKEN` do not trigger the CI: set the
   secret `ODOO_BUMP_TOKEN` (fine-grained personal access token or GitHub App token) to
-  get it. Without this secret, tick "Allow GitHub Actions to create and approve pull
-  requests" (Settings > Actions > General), otherwise the pull request cannot be
-  created; the next run opens it for the branch already pushed. The schedule runs only
-  on the default branch; run the workflow by hand for another version branch.
+  get it. The schedule runs only on the default branch; run the workflow by hand for
+  another version branch.
 - **Actions, pip, npm**: Dependabot (weekly pull requests, never merged automatically).
 - **pre-commit hooks**: `pre-commit autoupdate` in the dev container, then a pull
   request.

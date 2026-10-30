@@ -1,0 +1,28 @@
+# Fixture of ci/chart-e2e.sh: in a namespace denied by default, lets the release odoo
+# reach the CNPG clusters, and the CNPG operator and plugin manage them.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: odoo-db
+spec:
+  podSelector:
+    matchExpressions:
+      - {key: cnpg.io/cluster, operator: Exists}
+  policyTypes: [Ingress]
+  ingress:
+    # Odoo pods and Jobs of the release "odoo"
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: odoo
+              app.kubernetes.io/instance: odoo
+      ports:
+        - {port: 5432}
+    # CNPG operator and Barman Cloud plugin (status, fencing, backups), and the instances
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: cnpg-system
+        - podSelector:
+            matchExpressions:
+              - {key: cnpg.io/cluster, operator: Exists}

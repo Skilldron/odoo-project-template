@@ -1,0 +1,67 @@
+# Fixture of ci/chart-e2e.sh: database of the staging, installed with the CloudNativePG
+# "cluster" chart and the configuration the Odoo chart requires: role odoo declared with
+# CREATEDB (password in the Secret odoo-db-credentials), pg_create_restore_point granted
+# in the database postgres, WAL archiving. The volumeSnapshot section is patched by the
+# e2e after the installation (cloudnative-pg/charts#900).
+fullnameOverride: odoo-db
+type: postgresql
+version:
+  postgresql: "18"
+mode: standalone
+
+cluster:
+  instances: 1
+  storage:
+    size: 20Gi
+    # Must support volume snapshots (restore points); "" = the default class
+    storageClass: ""
+  enableSuperuserAccess: false
+  # A single instance: a PodDisruptionBudget would block node drains
+  enablePDB: false
+  initdb:
+    database: app
+    owner: odoo
+    secret:
+      name: odoo-db-credentials
+    # Run in the database postgres: the stop-snapshot Job names a restore point in the WAL
+    # before each update (a superuser function otherwise)
+    postInitSQL:
+      - GRANT EXECUTE ON FUNCTION pg_create_restore_point(text) TO odoo
+  # Applied by CNPG whatever the bootstrap, a recovery included
+  roles:
+    - name: odoo
+      ensure: present
+      login: true
+      createdb: true
+      superuser: false
+      passwordSecret:
+        name: odoo-db-credentials
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+
+backups:
+  enabled: true
+  method: plugin
+  pluginConfiguration:
+    name: barman-cloud.cloudnative-pg.io
+  provider: s3
+  # S3-compatible endpoint; empty for AWS (then s3.region is required)
+  endpointURL: ""
+  # One folder per environment: Barman refuses to archive into a non-empty folder
+  destinationPath: s3://odoo-backups/project-prod/
+  s3:
+    region: eu-west-3
+  # The chart asks for server-side encryption AES256 (wal.encryption, data.encryption):
+  # set both to "" for a store without it (MinIO without KMS refuses every upload)
+  secret:
+    create: false
+    name: odoo-db-s3
+  scheduledBackups:
+    - name: nightly
+      schedule: "0 0 2 * * *"
+      backupOwnerReference: self
+      method: plugin
+      pluginConfiguration:
+        name: barman-cloud.cloudnative-pg.io
+  retentionPolicy: 30d
